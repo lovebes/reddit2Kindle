@@ -21,6 +21,7 @@ into a Kindle-formatted MOBI book.
 Usage:
     r2k.py top <subreddit> [--posts=<n>] [--period=<t>] [options]
     r2k.py hot <subreddit> [--posts=<n>] [options]
+    r2k.py <commentid> [options]
 
 Options:
     --posts=<n>         The number of posts to include in the generated book.
@@ -40,6 +41,8 @@ def from_cli():
     max_posts = int(args['--posts'])
     period = args['--period']
     subreddit = args['<subreddit>']
+    commentid = args['<commentid>']
+    
 
     # Setup logging.
     ch = logging.StreamHandler()
@@ -52,7 +55,9 @@ def from_cli():
     # that doesn't get resolved until you actually query for some
     # property.
     r = praw.Reddit(user_agent='reddit-selftext-to-kindle converter')
-    sub = r.get_subreddit(subreddit)
+    if not commentid:
+        sub = r.get_subreddit(subreddit)
+
 
     if args['top']:
         posts = {
@@ -63,6 +68,9 @@ def from_cli():
             'day': sub.get_top_from_day,
             'hour': sub.get_top_from_hour
         }[period](limit=max_posts)
+    elif args['<commentid>']:
+        posts = r.get_submission(submission_id=commentid)
+
     elif args['hot']:
         posts = sub.get_hot(limit=max_posts)
 
@@ -71,6 +79,13 @@ def from_cli():
 
     logger.debug('generating html template...')
     with open('r2k_result.htm'.format(subreddit), 'wb') as fout:
+        top_=''
+        if args['top']:
+            top_='top'
+        elif args['hot']:
+            top_='hot'
+        else:
+            top_=commentid
         fout.write(thread_template.render(
             now=datetime.datetime.today(),
             post_count=max_posts,
@@ -79,7 +94,7 @@ def from_cli():
             title=subreddit,
             posts=posts,
             markdown=markdown2.markdown,
-            type_of_posts='top' if args['top'] else 'hot'
+            type_of_posts=top_
         ).encode('utf-8'))
 
     converted = False
@@ -107,10 +122,17 @@ def from_cli():
 
     if converted:
         os.remove('r2k_result.htm')
+        if commentid:
+            sub=posts.title
+        else:
+            sub=subreddit
+            
         os.rename('r2k_result.mobi', 'r2k_{sub}_{period}_{dt}.mobi'.format(
-            sub=subreddit,
-            period=period,
-            dt=datetime.datetime.today().strftime('%d-%m-%Y')
+            sub=sub,
+            #period=period,
+            #dt=datetime.datetime.today().strftime('%d-%m-%Y')
+            period='',
+            dt=''
         ))
     else:
         logger.warning(
